@@ -14,7 +14,8 @@ runs the schedule. It publishes two retained MQTT messages for the board:
 - `plan`: the next event per blind (epoch time + direction), plus the
   current time so the board can correct its clock.
 - `cmd`: a manual command with an id, for "close the bay now" from the
-  phone or laptop. The server clears it once the board acks that id.
+  `blinds` CLI on a laptop. The server clears it once the board acks that
+  id, so a retained command never runs twice.
 
 The **board** is a sleepy actuator. Each wake:
 
@@ -26,6 +27,24 @@ The **board** is a sleepy actuator. Each wake:
    interval, whichever is sooner.
 
 If Wi-Fi fails it runs the last plan it has, on its own clock.
+
+## Manual commands from the CLI
+
+The CLI can't wake the board. In deep sleep the Wi-Fi radio is off, so no
+packet reaches it. A command is queued instead: `blinds bay down` publishes
+`cmd`, prints "queued, runs by 9:42 pm", and with `--wait` blocks until the
+board acks. Latency is the poll interval (5 min) plus a few seconds to
+reconnect.
+
+Two ways to get instant response were ruled out:
+
+- **Staying on Wi-Fi in light sleep.** It answers in about a second, but on
+  this hardware it costs about as much as the board's idle overhead, and
+  Arduino builds don't enable automatic light sleep by default.
+  `WiFi.setSleep(true)` is modem sleep, with the CPU awake at 20-30 mA. Worth
+  an experiment once sleep current is measured, not the default.
+- **Wake-on-radio** through the CC1101. It would need a 433 MHz transmitter
+  at the laptop.
 
 ## Rules that came out of review
 
@@ -47,21 +66,25 @@ If Wi-Fi fails it runs the last plan it has, on its own clock.
 
 ## Power
 
-Open question until sleep current is measured on a spare board. The dev
-board's USB chip, regulator and power LED likely idle around 0.5 to 1 mA,
-which alone sets the battery life. Options, in order of preference:
+The dev board as shipped can't do this. Its AMS1117 regulator draws about
+5-10 mA doing nothing and the power LED a few more, which drains an 18650 in
+2-4 weeks whatever the firmware does. The AMS1117 also needs about 1 V of
+headroom, so on a sagging Li-ion cell it browns out during Wi-Fi bursts.
+**The regulator gets bypassed and the LED comes off. That's required.**
+Options, in order of preference:
 
-1. 18650 Li-ion + a low-quiescent LDO rated 500 mA or more (RT9080 class).
-   Real voltage curve, so the battery level means something.
+1. 18650 Li-ion + a low-quiescent LDO rated 500 mA or more (RT9080,
+   ME6211). Real voltage curve, so the battery level means something. Not
+   the HT7333 or MCP1700: 250 mA is under Wi-Fi peaks.
 2. LiFePO4 straight to 3V3. Simple, but the voltage is flat until empty and a
    fresh cell sits at the chip's 3.6 V limit.
 
-Either way, a 470 µF bulk cap for Wi-Fi spikes, and the power LED comes off.
+Either way, a 470 µF bulk cap for Wi-Fi spikes. Measure sleep current on a
+spare board first, then again after the changes.
 
 ## Tradeoffs accepted
 
-- Manual commands wait until the next wake (poll interval, 5 to 30 min, his
-  pick).
+- Manual commands from the CLI wait for the next wake, up to 5 min.
 - Physical remote presses are not tracked: the board's receiver is off.
 
 ## Steps
@@ -70,7 +93,9 @@ Either way, a 470 µF bulk cap for Wi-Fi spikes, and the power LED comes off.
 2. CC1101 setup + RMT transmit.
 3. Sleep/wake loop, NVS, MQTT plan/cmd/ack, lockout.
 4. Flash a spare ESP32, measure sleep current.
-5. Pick and buy the battery and regulator.
+5. Buy the battery and regulator, bypass the AMS1117, remove the LED,
+   measure again.
 6. Move the CC1101, re-pair the three blinds as new remotes.
-7. Server side: publish `plan` and `cmd` from the existing `blinds` scheduler.
+7. Server side: the scheduler publishes `plan`; the laptop `blinds` CLI
+   switches from talking HTTP to ESPSomfy to queuing `cmd` over MQTT.
 8. Photos, video, write-up.
