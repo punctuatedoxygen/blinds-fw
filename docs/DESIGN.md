@@ -3,8 +3,8 @@
 ## Goal
 
 Drive three Somfy RTS blinds from a battery board that lasts months, with no
-wall plug. The board sits in the bedroom on the second floor; the home server
-is in the basement, too far for 433 MHz.
+wall plug. The board sits near the blinds; the home server is too far away
+for 433 MHz.
 
 ## Split of work
 
@@ -13,7 +13,7 @@ runs the schedule. It publishes two retained MQTT messages for the board:
 
 - `plan`: the next event per blind (epoch time + direction), plus the
   current time so the board can correct its clock.
-- `cmd`: a manual command with an id, for "close the bay now" from the
+- `cmd`: a manual command with an id, for "close blind 1 now" from the
   `blinds` CLI on a laptop. The server clears it once the board acks that
   id, so a retained command never runs twice.
 
@@ -31,7 +31,7 @@ If Wi-Fi fails it runs the last plan it has, on its own clock.
 ## Manual commands from the CLI
 
 The CLI can't wake the board. In deep sleep the Wi-Fi radio is off, so no
-packet reaches it. A command is queued instead: `blinds bay down` publishes
+packet reaches it. A command is queued instead: `blinds 1 down` publishes
 `cmd`, prints "queued, runs by 9:42 pm", and with `--wait` blocks until the
 board acks. Latency is the poll interval (5 min) plus a few seconds to
 reconnect.
@@ -61,7 +61,7 @@ Two ways to get instant response were ruled out:
   Offline it gets worse by the hour.
 - **Transmit through the RMT peripheral**, not a bit-banged pin with
   interrupts off.
-- **Weak receivers get repeats**: Corner Win 2 needs about 8 frames.
+- **Weak receivers get repeats**: one of the three needs about 8 frames.
 - **No credentials or rolling codes in the repo** (`secrets.h` is ignored).
 
 ## Power
